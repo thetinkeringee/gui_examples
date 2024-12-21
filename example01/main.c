@@ -83,7 +83,7 @@ int main(void) {
 
   //
   // Give window a Name
-  const char* const wName = "A Winodw";
+  const char* const wName = "Example 01";
   const uint32_t wNameLen = strlen(wName);
 
   xcb_change_property(xcb.connection,        // Conection to the X11 server
