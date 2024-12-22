@@ -1,4 +1,4 @@
-# XCB and Wayland client example 
+# GUI Examples XCB, Wayland, and Windows
 
 This is a growing collection of XCB and Wayland client examples. Initially
 everything will be in C, but I'm hoping to add some other languages too. I may
