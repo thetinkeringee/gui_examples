@@ -166,6 +166,7 @@ int main(void) {
       if (ESCAPE_KEYCODE == press->detail) {
         should_exit = true;
       }
+      break;
     }
 
     default: {
