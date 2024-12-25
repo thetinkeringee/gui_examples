@@ -1,18 +1,18 @@
-/* 
+/*
  * MIT License
- * 
- * Copyright (c) 2024 Ezekiel Holliday 
- * 
+ *
+ * Copyright (c) 2024 Ezekiel Holliday
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
- * 
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -23,6 +23,7 @@
  *
  */
 
+#include "util.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,7 +31,6 @@
 #include <xcb/xcb_event.h>
 #include <xcb/xcb_util.h>
 #include <xcb/xproto.h>
-#include "util.h"
 
 // Structure to hold xcb specific information
 static struct {
@@ -39,7 +39,6 @@ static struct {
   xcb_screen_t *screen;
 
 } xcb = {};
-
 
 // Define the Backgrouund Color
 //
@@ -51,7 +50,6 @@ static struct {
 // typically used.
 // Chanel order: alpha red green blue
 #define BG_COLOR 0xFF404050
-
 
 int main(void) {
 
@@ -66,7 +64,7 @@ int main(void) {
   // Push all commands to the server
   xcb_flush(xcb.connection);
 
-  //  Check to see if a proper connection was possible 
+  //  Check to see if a proper connection was possible
   if (xcb_connection_has_error(xcb.connection)) {
     fprintf(stderr, "Error with connection to X11 server\n");
     return -1;
@@ -105,18 +103,18 @@ int main(void) {
                     xcb.screen->root,     // Parent window id
                     0,                    // Window x postion
                     0,                    // Winodw y position
-                    400,                  // Window width 
+                    400,                  // Window width
                     300,                  // Window height
                     1,                    // border width
-                    78,//XCB_WINDOW_CLASS_INPUT_OUTPUT, //
-                    xcb.screen->root_visual,       //
+                    XCB_WINDOW_CLASS_INPUT_OUTPUT, //
+                    xcb.screen->root_visual, //
                     valueMask, // Specify which values will be pased to server
                     values     // The actual values
   );
   // NOTE: The window size and position may be ignored by some window managers.
 
   // Give the window a name
-  const char* const wName = "Example 01";
+  const char *const wName = "Example 01";
   const uint32_t wNameLen = strlen(wName);
 
   xcb_change_property(xcb.connection,        // Conection to the X11 server
@@ -131,9 +129,10 @@ int main(void) {
 
   // Make the window visiable
   xcb_map_window(xcb.connection, window1);
+  xcb_flush(xcb.connection);
 
   // Event loop
-    
+
   xcb_generic_event_t *event = nullptr;
 
 #define ESCAPE_KEYCODE 9
@@ -144,18 +143,18 @@ int main(void) {
     switch (event->response_type & ~80) {
 
     // Case an xcb error has occured
-    case 0: { //Error
-        xcb_generic_error_t* error = (xcb_generic_error_t*) event;
-    
-        const char* const error_type = errorCodeToText(error->error_code);
-        const char* const opcode = opcodeToText(error->major_code);
+    case 0: { // Error
+      xcb_generic_error_t *error = (xcb_generic_error_t *)event;
 
-        fprintf(stderr, "XCB %s %s error. Minor opcode %d\n\n", opcode,
-                error_type, error->minor_code);
-        break;
+      const char *const error_type = errorCodeToText(error->error_code);
+      const char *const opcode = opcodeToText(error->major_code);
+
+      fprintf(stderr, "XCB %s %s error. Minor opcode %d\n\n", opcode,
+              error_type, error->minor_code);
+      break;
     }
 
-    // A key press event 
+    // A key press event
     case XCB_KEY_PRESS: {
       // The event is a key press. Cast the event to a key press event
       xcb_key_press_event_t *press = (xcb_key_press_event_t *)event;
