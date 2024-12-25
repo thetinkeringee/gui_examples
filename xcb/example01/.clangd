@@ -1,0 +1,12 @@
+If:
+  PathMatch: .*\.h
+CompileFlags:
+  Add: [-xc-header]
+  Remove: [-xc++-header, -xobjective-c++-header]
+
+---
+
+CompileFlags:
+  Add: [-xc]
+  Remove: [-xc++] 
+  Compiler: clang
