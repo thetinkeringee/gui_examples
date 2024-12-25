@@ -1,4 +1,4 @@
-# Example 2 A Window
+# XCB Example 2: A Properly Closing Window
 
 This example fixes the problem Example 1 has when closing the window by hitting
 the x or close button in the upper right hand corner of the window. The issue
