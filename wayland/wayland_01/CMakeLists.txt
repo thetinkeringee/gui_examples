@@ -1,0 +1,46 @@
+cmake_minimum_required(VERSION 3.27)
+
+project("Wayland GUI Examples"
+    VERSION 0.0.1
+    LANGUAGES 
+    C 
+)
+
+set(executable_name "wayland_01" CACHE STRING "Name of the exectuable to be produced" FORCE) 
+
+# name the exectuable that will be created
+add_executable( ${executable_name} )
+
+# Set what version of C will be used 
+set_target_properties( ${executable_name}  
+    PROPERTIES
+        C_STANDARD              23
+        C_STANDARD_REQUIRED     TRUE
+        C_EXTENSIONS            FALSE
+)
+cmake_path(SET module_path NORMALIZE "${CMAKE_CURRENT_LIST_DIR}/../../CMAKE")
+message(STATUS ${module_path})
+list(APPEND CMAKE_MODULE_PATH ${module_path})
+message(STATUS ${CMAKE_MODULE_PATH})
+
+find_package(Wayland_Client) 
+
+if(WAYLAND_CLIENT_FOUND)
+
+# Specify the libraries to link
+target_link_libraries( ${executable_name}
+    PRIVATE
+    ${WAYLAND_CLIENT_LINK_LIBRARIES}
+)
+
+# Add the actual source files to be compiled
+target_sources( ${executable_name}
+    PRIVATE
+    main.c 
+)
+else()
+    message(FATAL_ERROR "Unable to find wayland-client")
+
+
+endif()
+
