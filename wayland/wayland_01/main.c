@@ -5,6 +5,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 static void global_announced(void *data, struct wl_registry *wl_registry,
                              uint32_t name, const char *interface,
@@ -15,6 +17,39 @@ static void global_removed(void *data, struct wl_registry *wl_registry,
                            uint32_t name);
 
 static void pixel_format(void *data, struct wl_shm *wl_shm, uint32_t format);
+
+int random_name(char* name, size_t length) {
+    int f = open("/dev/random", O_RDONLY);
+    if (f < 0) {
+        return -1;
+    }
+    //TODO: Check for error
+    char chars[] = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K',
+                    'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V',
+                    'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g',
+                    'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r',
+                    's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1', '2',
+                    '3', '5', '6', '7', '8', '9', '!', '@', '#', '$', '%',
+                    '^', '&', '*', '.', '(', ')', '?','=','+','-','_'};
+
+    const size_t sz = sizeof(chars);
+
+    *name = '/';
+    printf("Entering for loop\n");
+    
+    for(char* ptr = name + 1; ptr != name + (length-1); ptr++) {
+        char num;
+        if(read(f, &num, 1) != 1){
+           return -1; 
+        }
+        *ptr = chars[num % sz]; 
+    }
+    name[length-1] = '\0';
+    close(f);
+    return 0;
+}
+
+
 
 
 typedef struct WaylandStruct {
@@ -28,13 +63,14 @@ typedef struct WaylandStruct {
     // this could be a structure tied to shm instead of just the display
 } Wayland; 
 
-static_assert(sizeof(Wayland) == 56, "");
 
 int main(void) {
 
-   char nnn[L_tmpnam +1];
-   tmpnam(nnn);
+   char nnn[20];
 
+   if(random_name(nnn, sizeof(nnn))) {
+    fprintf(stderr, "Unable to generate random name\n");
+   }
    printf("%s\n",nnn);
 
 
