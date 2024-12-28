@@ -62,7 +62,18 @@ typedef struct ShmStruct {
   int fd;
   char name[14];
   ssize_t size;
+  uint8_t* data;
 } Shm;
+
+
+static void destroyShm(Shm* mem){
+    if (nullptr == mem) return;
+   
+    if (mem->fd < 0) {
+        close(mem->fd);
+    }
+    free(mem);
+}
 
 static Shm *newShm(ssize_t size) {
   if (size <= 0) return nullptr;
@@ -109,16 +120,14 @@ static Shm *newShm(ssize_t size) {
     return nullptr;
   }
   mem->size = size;
-  return mem;
-}
+  mem->data =
+      mmap(nullptr, mem->size, PROT_READ | PROT_WRITE, MAP_SHARED, mem->fd, 0);
+  if(MAP_FAILED == mem->data) {
+    destroyShm(mem);
+    return nullptr;
+  }
 
-void destroyShm(Shm* mem){
-    if (nullptr == mem) return;
-   
-    if (mem->fd < 0) {
-        close(mem->fd);
-    }
-    free(mem);
+  return mem;
 }
 
 
@@ -208,17 +217,48 @@ int main(void) {
       return -1;
     }
 
-    const int width = 1920;
-    const int height = 1080;
-    const int stride = width * 4;
-    const int shm_pool_size = height * stride * 2;
-    Shm* shm = newShm( shm_pool_size);
+    constexpr int width = 1920;
+    constexpr int height = 1080;
+    constexpr int bytesPerPixel = 4; 
+    constexpr int bytesPerScreen =  width * height * bytesPerPixel;
+    constexpr int poolSize =  bytesPerScreen * 2; 
+
+    Shm* shm = newShm( poolSize );
 
     if (nullptr == shm) {
         fprintf(stderr, "Unable to create shm\n");
+        
+        wl_surface_destroy(surface);
+        wl_display_roundtrip(wl.display);
+        wl_registry_destroy(wl.registry);
+        wl_display_roundtrip(wl.display);
+        wl_display_disconnect(wl.display);
+        return -1;
     }
 
 
+    struct wl_shm_pool* pool = wl_shm_create_pool(wl.shm, shm->fd, shm->size);
+    constexpr int stride = width * bytesPerPixel;
+
+    // Create a buffer in the share memory pool
+    struct wl_buffer *buffer = wl_shm_pool_create_buffer(
+        pool,                  // Memory pool in which to create the buffer
+        0,                     // offset of start of buffer in the pool
+        width,                 // width in pixels
+        height,                // height in pixels
+        stride,                // Number of bytes from one row to the next
+        WL_SHM_FORMAT_XRGB8888 // display/pixel format 
+    );
+
+
+    // Set a buffer as the content of the surface created earlier
+    wl_surface_attach(
+        surface, // Surface to attach the buffer to
+        buffer,  // Buffer to attach to the surface
+        0, 0     // x and y coordinate of the buffer uper left hand corner
+    );
+    wl_surface_damage(surface, 0,0, UINT32_MAX, UINT32_MAX); // change to wl_surface_damage_buffer
+    wl_surface_commit(surface);
 
 
     destroyShm(shm);
@@ -259,6 +299,7 @@ static void global_announced(void *data, struct wl_registry *wl_registry,
 
     wl->shm = wl_registry_bind(wl_registry, name, &wl_shm_interface, 2);
     printf("Binding wl_shm_interface Version available: %d\n", version);
+
     wl_shm_add_listener(wl->shm, &wl->shm_listener, wl);
 
   } else {
