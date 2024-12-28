@@ -27,6 +27,28 @@ find_package(Wayland_Client)
 
 if(WAYLAND_CLIENT_FOUND)
 
+# Directory in which generated source will be stored
+set(GEN_DIR "${CMAKE_BINARY_DIR}/generated")
+file(MAKE_DIRECTORY ${GEN_DIR} )
+
+# Generate the needed xdg-shell code
+execute_process(
+COMMAND ${WAYLAND_SCANNER} private-code /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml  xdg-shell.c
+WORKING_DIRECTORY ${GEN_DIR}
+)
+
+# Generate the client header for xdg-shell
+execute_process(
+COMMAND ${WAYLAND_SCANNER} client-header /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml xdg-shell-client.h 
+WORKING_DIRECTORY ${GEN_DIR}
+)
+
+target_include_directories( ${executable_name}
+    PRIVATE
+    ${GEN_DIR}
+    
+)
+
 # Specify the libraries to link
 target_link_libraries( ${executable_name}
     PRIVATE
@@ -37,10 +59,16 @@ target_link_libraries( ${executable_name}
 target_sources( ${executable_name}
     PRIVATE
     main.c 
+    ${GEN_DIR}/xdg-shell.c
 )
+
+
+
+
+
+
 else()
     message(FATAL_ERROR "Unable to find wayland-client")
-
 
 endif()
 

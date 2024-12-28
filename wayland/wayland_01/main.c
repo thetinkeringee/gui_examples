@@ -10,6 +10,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
+//#include <wayland-protocols/xdg-shell-enum.h>
+#include <xdg-shell-client.h>
 
 static void global_announced(void *data, struct wl_registry *wl_registry,
                              uint32_t name, const char *interface,
@@ -19,6 +21,10 @@ static void global_removed(void *data, struct wl_registry *wl_registry,
                            uint32_t name);
 
 static void pixel_format(void *data, struct wl_shm *wl_shm, uint32_t format);
+
+static void xdgWmBasePing(void *data, struct xdg_wm_base *xdg_wm_base,
+                          uint32_t serial);
+
 
 // name  - pointer to buffer in which to store the random name 
 //
@@ -43,7 +49,6 @@ static int randomName(char* name, size_t length) {
     const size_t sz = sizeof(chars);
 
     *name = '/';
-    printf("Entering for loop\n");
     
     for(char* ptr = name + 1; ptr != name + (length-1); ptr++) {
         char num;
@@ -143,6 +148,8 @@ typedef struct WaylandStruct {
     struct wl_shm_listener shm_listener;
     // TODO: Add vector to maintain list of supportted formates
     // this could be a structure tied to shm instead of just the display
+    struct xdg_wm_base *xdg_wm_base;
+    struct xdg_wm_base_listener xdg_wm_base_listener;
 } Wayland; 
 
 
@@ -155,29 +162,32 @@ int main(void) {
    }
    printf("%s\n",nnn);
 
-
-
-  Wayland wl = {
-      .display = NULL,
-      .registry = NULL,
-      .registry_listener =
-          {   // Callbck to handle global object announcments
-              .global = global_announced,
+   Wayland wl = {
+       .display = NULL,
+       .registry = NULL,
+       .registry_listener =
+           {
+               // Callbck to handle global object announcments
+               .global = global_announced,
                // Callback for when a global object is removed
-              .global_remove = global_removed,
-          },
-      .shm_listener =
-          {
-              // handler to receive a list of surface formats
-              .format = pixel_format,
-          },
-  };
+               .global_remove = global_removed,
+           },
+       .shm_listener =
+           {
+               // handler to receive a list of surface formats
+               .format = pixel_format,
+           },
+       .xdg_wm_base_listener =
+           {
+               .ping = xdgWmBasePing,
+           },
+   };
 
-  // Get a connection to the wayland server
-  wl.display = wl_display_connect(NULL);
-  if (NULL == wl.display) {
-    fprintf(stderr, "Unable to connect to Wayland server.\n");
-    return -1;
+   // Get a connection to the wayland server
+   wl.display = wl_display_connect(NULL);
+   if (NULL == wl.display) {
+     fprintf(stderr, "Unable to connect to Wayland server.\n");
+     return -1;
     }
 
     // Get a registry 
@@ -209,7 +219,6 @@ int main(void) {
     // create a surface
     struct wl_surface* surface = wl_compositor_create_surface(wl.compositor);
     if (surface) {
-      printf("Surface Created\n");
     } else {
       fprintf(stderr, "Error creating surface\n");
       wl_registry_destroy(wl.registry);
@@ -236,7 +245,6 @@ int main(void) {
         return -1;
     }
 
-
     struct wl_shm_pool* pool = wl_shm_create_pool(wl.shm, shm->fd, shm->size);
     constexpr int stride = width * bytesPerPixel;
 
@@ -250,14 +258,13 @@ int main(void) {
         WL_SHM_FORMAT_XRGB8888 // display/pixel format 
     );
 
-
     // Set a buffer as the content of the surface created earlier
     wl_surface_attach(
         surface, // Surface to attach the buffer to
         buffer,  // Buffer to attach to the surface
         0, 0     // x and y coordinate of the buffer uper left hand corner
     );
-    wl_surface_damage(surface, 0,0, UINT32_MAX, UINT32_MAX); // change to wl_surface_damage_buffer
+    wl_surface_damage_buffer(surface , 0, 0, UINT32_MAX, UINT32_MAX);
     wl_surface_commit(surface);
 
 
@@ -302,11 +309,16 @@ static void global_announced(void *data, struct wl_registry *wl_registry,
 
     wl_shm_add_listener(wl->shm, &wl->shm_listener, wl);
 
+  } else if (strcmp(interface, xdg_wm_base_interface.name  ) == 0) {
+    wl->xdg_wm_base =
+
+        wl_registry_bind(wl_registry, name, &xdg_wm_base_interface, 6);
+        xdg_wm_base_add_listener(wl->xdg_wm_base, nullptr, wl);
+
   } else {
 
     printf("Name: %d Interface: %s Version %d\n", name, interface, version);
   }
-
 }
 
 /**
@@ -1072,3 +1084,15 @@ static char *shm_format_to_text(enum wl_shm_format format) {
     return "Unkown Format";
   };
 };
+
+
+static void xdgWmBasePing(void *data, struct xdg_wm_base *xdg_wm_base,
+                          uint32_t serial) {
+    Wayland* wl = (Wayland*) data;
+
+    fprintf(stderr,"Serial: %u \n", serial );
+
+    // Respond to indate client is still alive
+    xdg_wm_base_pong(wl->xdg_wm_base, serial);
+
+}
