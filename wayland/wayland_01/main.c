@@ -62,7 +62,6 @@ static int randomName(char* name, size_t length) {
     return 0;
 }
 
-
 typedef struct ShmStruct {
   int fd;
   char name[14];
@@ -139,6 +138,7 @@ static Shm *newShm(ssize_t size) {
 
 
 
+// Object to store Wayland state
 typedef struct WaylandStruct {
     struct wl_display* display;
     struct wl_registry* registry;
@@ -150,17 +150,13 @@ typedef struct WaylandStruct {
     // this could be a structure tied to shm instead of just the display
     struct xdg_wm_base *xdg_wm_base;
     struct xdg_wm_base_listener xdg_wm_base_listener;
+
+    // TODO: Add a vector like datastruct to keep track of objects they may need
+    // destroyed
 } Wayland; 
 
 
 int main(void) {
-
-   char nnn[20];
-
-   if(randomName(nnn, sizeof(nnn))) {
-    fprintf(stderr, "Unable to generate random name\n");
-   }
-   printf("%s\n",nnn);
 
    Wayland wl = {
        .display = NULL,
