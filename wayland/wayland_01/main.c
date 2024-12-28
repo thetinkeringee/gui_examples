@@ -1,24 +1,32 @@
 #include <wayland-client-core.h>
 #include <wayland-client-protocol.h>
 #include <wayland-client.h>
-
+#define __USE_XOPEN_EXTENDED
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <errno.h>
 
 static void global_announced(void *data, struct wl_registry *wl_registry,
                              uint32_t name, const char *interface,
                              uint32_t version);
-
 
 static void global_removed(void *data, struct wl_registry *wl_registry,
                            uint32_t name);
 
 static void pixel_format(void *data, struct wl_shm *wl_shm, uint32_t format);
 
-int random_name(char* name, size_t length) {
+// name  - pointer to buffer in which to store the random name 
+//
+// lenth - size of the buffer
+// 
+// Returns 0 on success and -1 otherwise 
+static int randomName(char* name, size_t length) {
+    if (6 > length) return -1;
     int f = open("/dev/random", O_RDONLY);
     if (f < 0) {
         return -1;
@@ -50,6 +58,71 @@ int random_name(char* name, size_t length) {
 }
 
 
+typedef struct ShmStruct {
+  int fd;
+  char name[14];
+  ssize_t size;
+} Shm;
+
+static Shm *newShm(ssize_t size) {
+  if (size <= 0) return nullptr;
+
+  Shm *mem = (Shm *)calloc(1, sizeof(Shm));
+
+  int try = 0; 
+  for (;;){ 
+    if (randomName(mem->name, sizeof(mem->name))) {
+        fprintf(stderr, "\nError generating random name.\n--File: %s Line: %d\n\n",
+            __FILE__, __LINE__);
+        free(mem);
+        return nullptr;
+    }
+
+    mem->fd = shm_open(mem->name, O_RDWR | O_CREAT | O_EXCL, 0600);
+    if (mem->fd >= 0) {
+      break;
+    }
+
+    try++;
+
+    if (errno != EEXIST || try >= 20 ) {
+        fprintf(stderr, "Unable to open new shared memory object\n");
+        free(mem);
+        return NULL;
+    }
+  }
+
+  // Unlinking the object is perftly fine. It will reamin until all no open
+  // references exist.
+  shm_unlink(mem->name);
+
+  // Set size
+  int ret;
+  do {
+    ret= ftruncate(mem->fd, size );
+  } while( ret < 0 && errno == EINTR );
+
+  if (-1 == ret) {
+    fprintf(stderr, "Unable to set lenght\n");
+    close(mem->fd);
+    free(mem);
+    return nullptr;
+  }
+  mem->size = size;
+  return mem;
+}
+
+void destroyShm(Shm* mem){
+    if (nullptr == mem) return;
+   
+    if (mem->fd < 0) {
+        close(mem->fd);
+    }
+    free(mem);
+}
+
+
+
 
 
 typedef struct WaylandStruct {
@@ -68,7 +141,7 @@ int main(void) {
 
    char nnn[20];
 
-   if(random_name(nnn, sizeof(nnn))) {
+   if(randomName(nnn, sizeof(nnn))) {
     fprintf(stderr, "Unable to generate random name\n");
    }
    printf("%s\n",nnn);
@@ -135,12 +208,20 @@ int main(void) {
       return -1;
     }
 
+    const int width = 1920;
+    const int height = 1080;
+    const int stride = width * 4;
+    const int shm_pool_size = height * stride * 2;
+    Shm* shm = newShm( shm_pool_size);
+
+    if (nullptr == shm) {
+        fprintf(stderr, "Unable to create shm\n");
+    }
 
 
 
 
-
-
+    destroyShm(shm);
     wl_surface_destroy(surface);
     wl_display_roundtrip(wl.display);
     wl_registry_destroy(wl.registry);
