@@ -1,3 +1,4 @@
+#include <bits/pthreadtypes.h>
 #include <wayland-client-core.h>
 #include <wayland-client-protocol.h>
 #include <wayland-client.h>
@@ -12,6 +13,16 @@
 #include <errno.h>
 //#include <wayland-protocols/xdg-shell-enum.h>
 #include <xdg-shell-client.h>
+
+#include <signal.h>
+#include <poll.h>
+
+
+
+#define BG_COLOR 0xFF404050
+#define WIDTH 640
+#define HEIGHT 480
+const char* const WindowName="A Window";
 
 static void global_announced(void *data, struct wl_registry *wl_registry,
                              uint32_t name, const char *interface,
@@ -69,11 +80,14 @@ typedef struct ShmStruct {
   uint8_t* data;
 } Shm;
 
-
 static void destroyShm(Shm* mem){
     if (nullptr == mem) return;
+
+    if (mem->data != nullptr) {
+        munmap(mem->data, mem->size);
+    }
    
-    if (mem->fd < 0) {
+    if (mem->fd >= 0) {
         close(mem->fd);
     }
     free(mem);
@@ -137,7 +151,6 @@ static Shm *newShm(ssize_t size) {
 
 
 
-
 // Object to store Wayland state
 typedef struct WaylandStruct {
     struct wl_display* display;
@@ -153,10 +166,99 @@ typedef struct WaylandStruct {
 
     // TODO: Add a vector like datastruct to keep track of objects they may need
     // destroyed
+    //
+    //
+
+    struct wl_surface* wlSurface;
+    struct xdg_surface* xdgSurface;
+    struct xdg_toplevel* topLevel;
+    struct xdg_surface_listener xdg_surface_listener;
+    struct wl_buffer_listener buffer_listener;
+
+    size_t should_exit;
 } Wayland; 
 
 
+
+static void
+releaseBuffer(void *data, struct wl_buffer *buffer)
+{
+    wl_buffer_destroy(buffer);
+}
+
+
+struct wl_buffer* fillWindow(Wayland* wl){
+    constexpr ssize_t bytesPerPixel = 4; 
+    constexpr ssize_t shmSize = WIDTH * HEIGHT * bytesPerPixel;
+    constexpr int stride = WIDTH * bytesPerPixel;
+
+    Shm* shm = newShm( shmSize );
+    if (nullptr == shm) {
+      fprintf(stderr, "Unable to create shm\n");
+      return nullptr;
+    }
+    
+    struct wl_shm_pool* pool = wl_shm_create_pool(wl->shm, shm->fd, shm->size);
+
+    // Create a buffer in the share memory pool
+    struct wl_buffer *buffer = wl_shm_pool_create_buffer(
+        pool,                  // Memory pool in which to create the buffer
+        0,                     // offset of start of buffer in the pool
+        WIDTH,                 // width in pixels
+        HEIGHT,                // height in pixels
+        stride,                // Number of bytes from one row to the next
+        WL_SHM_FORMAT_XRGB8888 // display/pixel format 
+    );
+    wl_shm_pool_destroy(pool);
+
+    memset(shm->data, BG_COLOR, shmSize);
+
+    destroyShm(shm);
+   
+    wl_buffer_add_listener(buffer, &wl->buffer_listener , nullptr);
+
+    return buffer;
+}
+
+
+
+void xdgSrufaceListenerFunc(void *data, struct xdg_surface *xdg_surface, uint32_t serial){
+    Wayland* wl= data;
+    xdg_surface_ack_configure(xdg_surface, serial);
+
+    struct wl_buffer *buffer = fillWindow(wl);
+    if (buffer) {
+        wl_surface_attach(wl->wlSurface, buffer, 0, 0);
+        wl_surface_commit(wl->wlSurface);
+    } else {
+        wl->should_exit = 1;
+    }
+}
+
+
+static volatile bool quit = false;
+
+
+
+void signalHandler(int signo) {
+    if (signo == SIGINT) {
+        printf("SIGINT received. Exitiing\n");
+        quit = true;
+        printf("quit set to %d\n", quit);
+    }
+}
+
+
+
+
 int main(void) {
+
+   if (signal(SIGINT, signalHandler) == SIG_ERR) {
+        fprintf(stderr, "Unable to configure signal handler\n");
+        return -1;
+   }
+
+
 
    Wayland wl = {
        .display = NULL,
@@ -177,6 +279,8 @@ int main(void) {
            {
                .ping = xdgWmBasePing,
            },
+       .xdg_surface_listener = xdgSrufaceListenerFunc,
+       .buffer_listener = releaseBuffer ,
    };
 
    // Get a connection to the wayland server
@@ -212,60 +316,53 @@ int main(void) {
         return -1;
     }
 
+
     // create a surface
-    struct wl_surface* surface = wl_compositor_create_surface(wl.compositor);
-    if (surface) {
-    } else {
-      fprintf(stderr, "Error creating surface\n");
-      wl_registry_destroy(wl.registry);
-      wl_display_disconnect(wl.display);
-      return -1;
+    wl.wlSurface = wl_compositor_create_surface(wl.compositor);
+
+    wl.xdgSurface = xdg_wm_base_get_xdg_surface(wl.xdg_wm_base,  wl.wlSurface);
+    wl.topLevel = xdg_surface_get_toplevel(wl.xdgSurface);
+    xdg_surface_add_listener(wl.xdgSurface, &wl.xdg_surface_listener, &wl);
+
+    xdg_toplevel_set_title(wl.topLevel, WindowName);
+
+    xdg_toplevel_set_max_size(wl.topLevel, WIDTH, HEIGHT);
+    xdg_toplevel_set_min_size(wl.topLevel, WIDTH, HEIGHT);
+
+    wl_surface_commit(wl.wlSurface);
+
+
+    printf("Press Ctrl+C to exit"); 
+
+    int fd = wl_display_get_fd(wl.display);
+    while (1) {
+	    int ret;
+
+	    while (true) {
+		    ret = wl_display_flush(wl.display);
+
+		    if (ret != -1 || errno != EAGAIN)
+			    break;
+	    }
+
+        struct pollfd pfd[1];
+        pfd[0].fd = fd;
+        pfd[0].events = POLLIN;
+        ret = poll(pfd, 1, 100);
+        if (ret > 0 ) {
+            wl_display_dispatch(wl.display);
+        }
+
+        if ( (wl.should_exit != 0) || (quit == true)) {
+            break;
+        }
     }
 
-    constexpr int width = 1920;
-    constexpr int height = 1080;
-    constexpr int bytesPerPixel = 4; 
-    constexpr int bytesPerScreen =  width * height * bytesPerPixel;
-    constexpr int poolSize =  bytesPerScreen * 2; 
-
-    Shm* shm = newShm( poolSize );
-
-    if (nullptr == shm) {
-        fprintf(stderr, "Unable to create shm\n");
-        
-        wl_surface_destroy(surface);
-        wl_display_roundtrip(wl.display);
-        wl_registry_destroy(wl.registry);
-        wl_display_roundtrip(wl.display);
-        wl_display_disconnect(wl.display);
-        return -1;
-    }
-
-    struct wl_shm_pool* pool = wl_shm_create_pool(wl.shm, shm->fd, shm->size);
-    constexpr int stride = width * bytesPerPixel;
-
-    // Create a buffer in the share memory pool
-    struct wl_buffer *buffer = wl_shm_pool_create_buffer(
-        pool,                  // Memory pool in which to create the buffer
-        0,                     // offset of start of buffer in the pool
-        width,                 // width in pixels
-        height,                // height in pixels
-        stride,                // Number of bytes from one row to the next
-        WL_SHM_FORMAT_XRGB8888 // display/pixel format 
-    );
-
-    // Set a buffer as the content of the surface created earlier
-    wl_surface_attach(
-        surface, // Surface to attach the buffer to
-        buffer,  // Buffer to attach to the surface
-        0, 0     // x and y coordinate of the buffer uper left hand corner
-    );
-    wl_surface_damage_buffer(surface , 0, 0, UINT32_MAX, UINT32_MAX);
-    wl_surface_commit(surface);
-
-
-    destroyShm(shm);
-    wl_surface_destroy(surface);
+    printf("Cleaining up\n");
+    xdg_toplevel_destroy(wl.topLevel);
+    xdg_surface_destroy(wl.xdgSurface);
+    xdg_wm_base_destroy(wl.xdg_wm_base);
+    wl_surface_destroy(wl.wlSurface);
     wl_display_roundtrip(wl.display);
     wl_registry_destroy(wl.registry);
     wl_display_roundtrip(wl.display);
