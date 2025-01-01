@@ -43,6 +43,19 @@ COMMAND ${WAYLAND_SCANNER} client-header /usr/share/wayland-protocols/stable/xdg
 WORKING_DIRECTORY ${GEN_DIR}
 )
 
+execute_process(
+COMMAND ${WAYLAND_SCANNER} client-header /usr/share/wayland/wayland.xml  wayland-client-protocol.h
+WORKING_DIRECTORY ${GEN_DIR}
+)
+
+execute_process(
+COMMAND ${WAYLAND_SCANNER} public-code /usr/share/wayland/wayland.xml public-code.c 
+WORKING_DIRECTORY ${GEN_DIR}
+)
+
+
+
+
 target_include_directories( ${executable_name}
     PRIVATE
     ${GEN_DIR}
@@ -51,15 +64,21 @@ target_include_directories( ${executable_name}
 
 # Specify the libraries to link
 target_link_libraries( ${executable_name}
-    PRIVATE
-    ${WAYLAND_CLIENT_LINK_LIBRARIES}
+PRIVATE
+ffi
+#${WAYLAND_CLIENT_LINK_LIBRARIES}
 )
 
 # Add the actual source files to be compiled
 target_sources( ${executable_name}
     PRIVATE
     main.c 
+    ${GEN_DIR}/public-code.c
     ${GEN_DIR}/xdg-shell.c
+    wayland-client.c
+    wayland-util.c
+    wayland-os.c
+    connection.c
 )
 
 
